@@ -1,10 +1,15 @@
 VERSION := 7.1.6
 
-CC := gcc
-CFLAGS := -Wall -O
+CC ?= gcc
+CFLAGS ?= -Wall -O
 
-override CPPFLAGS += -DUDP_FLIP -DSSL_AUTH
-override LDFLAGS += -lpolarssl
+CPPFLAGS += -DUDP_FLIP
+ifneq ($(NO_SSL), y)
+CPPFLAGS += -DSSL_AUTH
+LDFLAGS += -lpolarssl
+endif
+
+CPPFLAGS += -D UDP_FLIP
 
 LUAC := luac
 LUACFLAGS := -s
@@ -13,15 +18,33 @@ LUACFLAGS := -s
 #CFLAGS += -m32 -march=i486
 #EXEEXT := .exe
 
-MANIFEST := nattcp$(EXEEXT) udp-climber
-DIST := Makefile nattcp.c polarssl.c udp-climber.lua nuttcp.8 LICENSE \
-	xinetd.d/nattcp xinetd.d/nattcp4 xinetd.d/nattcp6 \
-	upstart/nattcp.conf
+DIST := Makefile nattcp.c udp-climber.lua nuttcp.8 LICENSE \
+	xinetd.d/nattcp xinetd.d/nattcp4 upstart/nattcp.conf
+ifneq ($(NO_SSL), y)
+DIST += polarssl.c 
+endif
+ifneq ($(NO_IPV6), y)
+DIST += xinetd.d/nattcp6 
+endif
+
+MANIFEST := nattcp$(EXEEXT) #udp-climber
+ifeq ($(NO_IPV6), y)
+CPPFLAGS += -D NO_IPV6
+endif
+
+ifneq ($(NO_LUAC), y)
+MANIFEST += udp-climber
+endif
 
 all : $(MANIFEST)
 
-nattcp$(EXEEXT) : nattcp.o polarssl.o
-	$(CC) -o $@ $^ $(LDFLAGS)
+OBJECTS := nattcp.o
+ifneq ($(NO_SSL), y)
+OBJECTS += polarssl.o
+endif
+
+nattcp$(EXEEXT) : $(OBJECTS)
+	$(CC) -o $@ $^ $(LDFLAGS) $(CPPFLAGS)
 
 udp-climber : udp-climber.lua
 	echo "#!/usr/bin/lua" >$@
@@ -31,7 +54,11 @@ udp-climber : udp-climber.lua
 install : $(MANIFEST)
 	mkdir -p $(DESTDIR)/usr/bin
 	install -m 0755 nattcp $(DESTDIR)/usr/bin/
+ifneq ($(NO_LUAC), y)
 	install -m 0755 udp-climber $(DESTDIR)/usr/bin/
+else
+	install -m 0755 udp-climber.lua $(DESTDIR)/usr/bin/
+endif
 
 clean:
 	rm -f *.o $(MANIFEST)
